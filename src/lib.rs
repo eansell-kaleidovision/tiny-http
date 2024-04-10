@@ -108,6 +108,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use client::ClientConnection;
@@ -136,6 +137,7 @@ mod util;
 ///  part of all the client's connections. Requests that have already been returned by
 ///  the `recv()` function will not close and the responses will be transferred to the client.
 pub struct Server {
+    handle: Option<JoinHandle<()>>,
     // should be false as long as the server exists
     // when set to true, all the subtasks will close within a few hundreds ms
     close: Arc<AtomicBool>,
@@ -314,7 +316,7 @@ impl Server {
 
         let inside_close_trigger = close_trigger.clone();
         let inside_messages = messages.clone();
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             // a tasks pool is used to dispatch the connections into threads
             let tasks_pool = util::TaskPool::new();
 
@@ -387,6 +389,7 @@ impl Server {
 
         // result
         Ok(Server {
+            handle: Some(handle),
             messages,
             close: close_trigger,
             listening_addr: local_addr,
@@ -478,5 +481,7 @@ impl Drop for Server {
                 let _ = std::fs::remove_file(path);
             }
         }
+
+        _ = self.handle.take().unwrap().join();
     }
 }
